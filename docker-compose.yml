@@ -1,0 +1,80 @@
+# `docker compose up` levanta todo el stack conectado:
+#   ollama (LLM) -> descarga del modelo -> backend (con warmup) -> frontend.
+# El frontend queda en http://localhost:5173 y la API en http://localhost:8000.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes: ["ollama:/root/.ollama"]
+    ports: ["11434:11434"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # Descarga el modelo LLM una vez y termina (warmup del LLM).
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${LLM_MODEL:-qwen2.5:3b}"]
+    restart: "no"
+
+  backend:
+    build: ./backend
+    # paddlepaddle solo publica wheels para linux/amd64 (no arm64): fijamos la plataforma
+    # para que el build funcione igual en Apple Silicon (vía emulación) que en x86.
+    platform: linux/amd64
+    env_file: .env
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      WARMUP: "1"          # precarga OCR + LLM al arrancar (sin espera en el 1er request)
+    ports: ["8000:8000"]
+    volumes:
+      - "debug:/app/data/debug"
+      - "easyocr:/root/.EasyOCR"   # cache de modelos EasyOCR
+      - "paddlex:/root/.paddlex"   # cache de modelos PaddleOCR
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 180s   # 1ª corrida descarga modelos OCR: puede tardar
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports: ["5173:80"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Demo interna en Python (opcional): docker compose --profile demo up
+  streamlit:
+    build: ./backend
+    platform: linux/amd64
+    profiles: ["demo"]
+    env_file: .env
+    environment:
+      API_URL: http://backend:8000
+      WARMUP: "0"
+    command: ["streamlit", "run", "streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    ports: ["8501:8501"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  ollama:
+  debug:
+  easyocr:
+  paddlex:
