@@ -10,7 +10,8 @@ geocoding behind a streaming API and a React review UI.
 > lives in a private repository (which is why the commit history here starts fresh — this
 > copy was prepared to show the work publicly, with no client data or credentials).
 >
-Applied ML / ML-engineering: it orchestrates pre-trained models (OCR and an LLM) into a robust, production-grade pipeline — end to end, from ingestion to a reviewable, exportable result.
+> Applied ML / ML-engineering: it orchestrates pre-trained models (OCR and an LLM) into a robust, 
+> production-grade pipeline — end to end, from ingestion to a reviewable, exportable result.
 
 ---
 
